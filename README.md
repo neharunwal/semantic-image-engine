@@ -1,102 +1,123 @@
-# Semantic Offline Image Engine (100% Air-Gapped)
+# Semantic Image Engine
 
-An open-source, database-free, offline-first image compression and semantic reconstruction engine.
-Converts high-resolution photos (50–100 MB) into compact semantic manifests (< 25 KB) using local machine learning models and a local filesystem inventory.
+An offline-first, semantic image compression and reconstruction platform designed to turn multi-megabyte photos into compact, human-readable JSON manifests (`< 25 KB`) using local inventory pattern matching and CPU-based machine learning.
 
----
-
-## Key Highlights
-
-- **Zero Database Dependency:** Runs completely on the local filesystem (`/inventory` and `/storage`).
-- **100% Offline & Free:** Uses local ONNX Runtime CPU inference and scikit-learn. No online endpoints, zero API keys, no subscriptions.
-- **Role-Based Access Control (RBAC):** Built-in REST API with role permissions.
-  - **Super Admin:** `nehasb25@gmail.com` (full permissions to add/delete inventory plates, inspect manifests, manage users).
-  - **Standard Users:** Upload, compress, and download manifests.
-- **Dual Mode:**
-  - **Semantic Mode (Weddings, Portraits, Social):** Segments subject, sharpens details, and composites with pre-cached high-res background plates (Sky, Sunset, Beach, Studio).
-  - **Forensic Mode (Archival, Archaeology):** Preserves raw pixel metrics without generative alteration.
+Zero external API calls. Zero cloud dependencies. Zero subscriptions. 100% self-hostable.
 
 ---
 
-## Quick Start (Single-File Runner)
+## Architecture Overview
 
-We provide a self-contained single-file runner: `run_semantic_app.py`.
-It automatically creates the entire directory structure, writes the backend REST API, creates the local inventory, generates procedural fallback plates, and serves an interactive web UI.
+`run_semantic_app.py` serves as the **single starting point and orchestrator** that boots the entire system, initializes the local filesystem inventory, coordinates the underlying ML pipeline, and serves the web UI and REST API.
 
-### 1. Prerequisites
-Ensure you have Python 3.8+ installed.
-
-Install the standard open-source dependencies:
-```bash
-pip install onnxruntime pillow scikit-learn numpy
+```
+semantic-image-engine/
+│
+├── run_semantic_app.py        # ★ Unified entry point & launcher (CLI & Web UI orchestrator)
+│
+├── engine/                    # Core Python offline processing modules
+│   ├── offline_ml_pipeline.py # Local ONNX Runtime segmentation & Scikit-learn palette analyzer
+│   └── decoder.py             # High-resolution image compositor & inventory renderer
+│
+├── server/                    # Dedicated Node.js / Express REST API (Alternative backend)
+│   ├── index.js               # Express server with JWT auth & RBAC
+│   └── package.json           # Node.js dependencies (express, multer, jsonwebtoken)
+│
+├── storage/                   # Local file-based storage (No SQL required)
+│   ├── users.json             # RBAC user credentials (nehasb25@gmail.com as super_admin)
+│   ├── manifests/             # Generated compact .sem.json files (< 25 KB)
+│   ├── cutouts/               # Extracted alpha masks & subject cutouts
+│   └── uploads/               # Temporary incoming photos
+│
+├── inventory/                 # Local high-resolution background plates library
+│   ├── studio/                # Clean neutral portrait backgrounds
+│   ├── sunsets/               # Golden hour and sunset plates
+│   ├── beaches/               # Coastal and ocean water scenes
+│   └── interiors/             # Architectural & indoor venues
+│
+├── models/                    # Offline open-source ML weights directory
+│   └── u2net.onnx             # Downloadable U-2-Net weights (CPU inference)
+│
+├── schema.sql                 # Optional MySQL 8.0+ schema for database deployments
+└── requirements.txt           # Python dependencies (onnxruntime, pillow, scikit-learn, numpy)
 ```
 
-*(Optional: If you want to run the Node.js Express server instead of the Python runner, Node 18+ is required).*
+---
 
-### 2. Run the Application
-Simply execute the runner script:
+## Quick Start (Single Command)
+
+### 1. Clone & Install Dependencies
+```bash
+git clone https://github.com/neharunwal/semantic-image-engine.git
+cd semantic-image-engine
+pip install -r requirements.txt
+```
+
+### 2. Launch the Application
+Run the orchestrator:
 ```bash
 python3 run_semantic_app.py
 ```
+Open **`http://127.0.0.1:8080`** in your browser.
 
-### 3. Open in Your Browser
-The terminal will display:
-```
-======================================================================
-  Semantic Offline Image Engine Started!
-  URL: http://127.0.0.1:8080
-  Super Admin Email: nehasb25@gmail.com
-======================================================================
-```
-Open `http://127.0.0.1:8080` in your web browser.
+The orchestrator will automatically:
+- Create and scaffold `/inventory`, `/models`, and `/storage`.
+- Seed reference backdrop plates in `/inventory/`.
+- Initialize `storage/users.json` with **`nehasb25@gmail.com`** as **Super Admin**.
+- Launch the interactive browser studio with compression metrics, live manifest inspection, and image decoding preview.
 
 ---
 
-## Directory Architecture
+## Command Line Interface (CLI)
 
-When `run_semantic_app.py` runs, it creates:
+`run_semantic_app.py` can also orchestrate individual tasks directly from the terminal:
 
+### Encode a Photo via Offline ML Pipeline:
+```bash
+python3 run_semantic_app.py --encode path/to/photo.jpg --mode semantic --cat studio
 ```
-semantic_engine/
-├── inventory/                  # Local high-resolution background plates
-│   ├── studio/                 # Clean portrait backdrops
-│   ├── sunset/                 # Golden hour gradients & horizons
-│   ├── beach/                  # Coastal shoreline plates
-│   └── weddings/               # Warm ambient indoor settings
-│
-├── models/                     # Offline ML weights
-│   └── u2net.onnx              # Pre-downloaded segmentation model
-│
-├── storage/
-│   ├── users.json              # Local RBAC credentials store
-│   └── manifests/              # Generated KB-sized .sem.json files
-│
-└── app.py                      # REST API & Web UI server
+*Outputs the compact JSON manifest and saves the subject cutout mask.*
+
+### Reconstruct High-Res Image from Manifest:
+```bash
+python3 run_semantic_app.py --decode storage/manifests/manifest_photo.json --out highres_output.jpg
+```
+*Composites the subject cutout over the matched local inventory plate.*
+
+---
+
+## Modular Engines
+
+### 1. `engine/offline_ml_pipeline.py`
+- **Subject Segmentation:** Runs `onnxruntime` with local model weights (`models/u2net.onnx` or `silueta.onnx`). If weights are not yet downloaded, an adaptive edge-contrast heuristic CPU fallback runs seamlessly.
+- **Color & Lighting Extraction:** Uses `scikit-learn` KMeans clustering to extract dominant color centroids, warmth balance, and average luminance.
+- **Inventory Matcher:** Selects the optimal background plate from the local `/inventory` folder matching the analyzed lighting.
+
+### 2. `engine/decoder.py`
+- Reconstructs high-resolution images on demand.
+- Fetches the local plate from `/inventory`, applies depth blur if requested by the manifest, and alpha-composites the sharpened subject.
+
+### 3. `server/index.js` (Node.js Alternative)
+For environments where you prefer running an Express REST API:
+```bash
+cd server
+npm install
+npm start
+```
+- Listens on `http://127.0.0.1:3001`
+- JWT authentication with role-based access control.
+- Enforces Super Admin permissions for `nehasb25@gmail.com`.
+
+### 4. `schema.sql` (MySQL Alternative)
+If you decide to deploy with a relational database instead of the local filesystem:
+```bash
+mysql -u root -p < schema.sql
 ```
 
 ---
 
-## REST API Reference
+## Role-Based Access Control (RBAC)
 
-All requests accept and return JSON. Authentication uses Bearer JWT tokens.
-
-| Method | Endpoint | Authorization | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | Public | Authenticates user; grants token and role |
-| `GET` | `/api/inventory` | Public / User | Lists available background plates from local disk |
-| `POST` | `/api/photos/process` | User / Admin | Runs ML segmentation; outputs < 25 KB manifest |
-| `POST` | `/api/photos/render` | User / Admin | Reconstructs 4K/8K image using local inventory |
-| `DELETE` | `/api/inventory/<cat>/<file>` | `super_admin` only | Deletes an inventory plate from disk |
-| `GET` | `/api/admin/users` | `super_admin` only | Lists local users and assigned roles |
-
----
-
-## Adding Real High-Res Plates & Models
-
-1. **Background Plates:** Drop any 4K/8K JPEGs into `inventory/studio/`, `inventory/sunset/`, `inventory/beach/`, etc. The engine automatically indexes them on disk.
-2. **Offline AI Weights:** Download `u2net.onnx` from the official open-source U-2-Net repository and place it into `models/u2net.onnx`. If the file is not yet downloaded, the engine automatically uses an algorithmic edge-contour fallback so the app works immediately.
-
----
-
-## License
-Open-source under MIT License. Deploy anywhere (Docker, Bare Metal, Air-gapped VPS).
+Configured out-of-the-box in `storage/users.json`:
+- **`nehasb25@gmail.com`** — **Super Admin**: Full CRUD access to inventory plates, user management, and system pipelines.
+- **`editor@local.test`** — **Standard User**: Can encode photos, download manifests, and decode images.

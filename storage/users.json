@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "email": "nehasb25@gmail.com",
+    "role": "super_admin",
+    "name": "Neha R (Super Admin)",
+    "permissions": [
+      "users:manage",
+      "inventory:read",
+      "inventory:write",
+      "inventory:delete",
+      "photos:encode",
+      "photos:decode",
+      "manifests:delete",
+      "system:manage"
+    ]
+  },
+  {
+    "id": 2,
+    "email": "editor@local.test",
+    "role": "user",
+    "name": "Standard Studio User",
+    "permissions": [
+      "inventory:read",
+      "photos:encode",
+      "photos:decode"
+    ]
+  }
+]
